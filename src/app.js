@@ -1,3 +1,7 @@
+import { cleanCriteria, durationFor, isPlayable, poolFor, MIN_CRITERIA, MAX_CRITERIA } from "./game-rules.js";
+import { listPersonalCards, savePersonalCard, deletePersonalCard, importImage } from "./library.js";
+import { guestRoom, hostRoom, createCollection, invitationUrl, refreshCollection, sendCard, updateSharedCard, removeSharedCard } from "./sharing.js";
+
 const cards = [
   { image: "/cards/scene-01.png", criteria: [
     "Il y a exactement 5 doigts sur chaque main du personnage.",
@@ -184,9 +188,20 @@ const cards = [
 ];
 
 const app = document.querySelector("#app");
-const ROUND_DURATION = 90_000;
+let savedMode = "classic";
+try { savedMode = localStorage.getItem("cloneit-mode") || "classic"; } catch {}
+const classicCards = cards.map((card, index) => ({ ...card, id: `classic-${index}`, source: "classic" }));
 const state = {
   stage: "ready",
+  mode: ["classic", "custom", "mixed"].includes(savedMode) ? savedMode : "classic",
+  personal: [],
+  editing: null,
+  busy: false,
+  sharingAvailable: false,
+  message: "",
+  lastDeleted: null,
+  aiAvailable: null,
+  durationMs: 90_000,
   deck: [],
   deckPosition: 0,
   roundsPlayed: 0,
@@ -247,31 +262,48 @@ function homeArtwork() {
         <path d="M258 141a4 4 0 0 1 4-4h12a4 4 0 0 1 4 4v11h-20v-11Z" fill="#cadbf1" stroke="#91acd0" stroke-width="1.5"/>
       </g>
     </svg>
-    <span class="time-sticker">90<span>secondes</span></span>
+    <span class="time-sticker">${state.card ? durationFor(state.card) : 90}<span>secondes</span></span>
   </div>`;
+}
+
+function invalidateDeck() {
+  state.deck = [];
+  state.deckPosition = 0;
+  state.card = null;
+}
+
+function chooseCard() {
+  const pool = poolFor(state.mode, classicCards, state.personal);
+  if (!pool.length) { state.card = null; return; }
+  if (state.deckPosition >= state.deck.length) {
+    state.deck = shuffle(pool);
+    state.deckPosition = 0;
+  }
+  state.card = state.deck[state.deckPosition++];
 }
 
 function renderReady() {
   state.stage = "ready";
   stage.className = "screen ready-screen";
+  if (!state.card) chooseCard();
   const firstRound = state.roundsPlayed === 0;
+  const count = state.card?.criteria.length || 0;
+  const seconds = state.card ? durationFor(state.card) : 0;
+  const personalCount = state.personal.filter(isPlayable).length;
   stage.innerHTML = `
     <section class="welcome">
       ${homeArtwork()}
       <h1>${firstRound ? 'À vos<br/><span>gribouillis !</span>' : 'Au prochain<br/><span>narrateur !</span>'}</h1>
       <p>${firstRound ? 'Un joueur décrit l’image, les autres dessinent sur papier. Puis, on compare !' : 'Passez le téléphone. La nouvelle image se dévoile au départ du chrono.'}</p>
     </section>
-    <div class="round-action"><button class="primary-button" type="button" data-action="start">Commencer la manche ${arrow}</button></div>`;
+    <div class="game-options">
+      <div class="mode-selector" role="group" aria-label="Images de la partie">${[["classic", "Classiques"], ["custom", "Mes images"], ["mixed", "Mélange"]].map(([mode, label]) => `<button type="button" data-action="mode" data-mode="${mode}" aria-pressed="${state.mode === mode}">${label}</button>`).join("")}</div>
+      <button class="library-link" data-action="library" type="button">Mes images <span>${personalCount ? personalCount + ' prêtes' : 'Ajouter'}</span> ↗</button>
+    </div>
+    <div class="round-action">
+      ${state.card ? `<p class="round-brief" aria-live="polite"><strong>${count} critères</strong><span>·</span><strong>${seconds} secondes</strong>${state.card.source === "custom" ? '<small>Image personnelle · annoncez la durée aux joueurs.</small>' : ''}</p><button class="primary-button" type="button" data-action="start">Commencer la manche ${arrow}</button>` : `<p class="empty-mode">Ajoute une image et ses critères pour jouer.</p><button class="primary-button" type="button" data-action="library">Ajouter mes images ${arrow}</button>`}
+    </div>`;
   window.scrollTo(0, 0);
-}
-
-function chooseCard() {
-  if (state.deckPosition >= state.deck.length) {
-    state.deck = shuffle(cards.map((_, index) => index));
-    state.deckPosition = 0;
-  }
-  state.card = cards[state.deck[state.deckPosition++]];
-  state.roundsPlayed += 1;
 }
 
 function formatTime(total) {
@@ -298,7 +330,7 @@ function animateProgress() {
   const remaining = Math.max(0, state.timerEnd - Date.now());
   // The bar runs on its own timeline, independently of the seconds display.
   state.progressAnimation = bar?.animate(
-    [{ transform: `scaleX(${remaining / ROUND_DURATION})` }, { transform: "scaleX(0)" }],
+    [{ transform: `scaleX(${remaining / state.durationMs})` }, { transform: "scaleX(0)" }],
     { duration: remaining, easing: "linear", fill: "forwards" }
   );
 }
@@ -329,15 +361,17 @@ function finishRound() {
 async function startRound() {
   if (state.stage !== "ready") return;
   state.stage = "loading";
-  const button = stage.querySelector("button");
+  const button = stage.querySelector('[data-action="start"]');
   button.disabled = true;
-  chooseCard();
+  if (!state.card) { renderReady(); return; }
   // Load the model before the 90 seconds begin.
   const model = new Image();
   model.src = state.card.image;
   try { await model.decode(); } catch { /* A cached image can still render. */ }
-  state.secondsLeft = 90;
-  state.timerEnd = Date.now() + ROUND_DURATION;
+  state.roundsPlayed += 1;
+  state.secondsLeft = durationFor(state.card);
+  state.durationMs = state.secondsLeft * 1000;
+  state.timerEnd = Date.now() + state.durationMs;
   state.stage = "draw";
   renderDraw();
   animateProgress();
@@ -357,11 +391,271 @@ function renderCorrection() {
   window.scrollTo(0, 0);
 }
 
+function messageMarkup() {
+  return state.message ? `<p class="library-message" role="status">${escapeHtml(state.message)}</p>` : "";
+}
+
+function renderLibrary() {
+  state.stage = "library";
+  stage.className = "screen library-screen";
+  const ready = state.personal.filter(isPlayable).length;
+  stage.innerHTML = `<div class="page-heading">${guestRoom ? '<span>La partie entre amis</span>' : '<button type="button" class="back-link" data-action="home">← Jouer</button>'}<span>${ready} prête${ready > 1 ? 's' : ''}</span></div>
+    <h1>${guestRoom ? 'Ajoute tes images' : 'Mes images'}<span>✳</span></h1>
+    ${guestRoom ? '<p class="contribution-intro">Tes photos rejoignent directement le jeu de l’organisateur.</p>' : `<div class="sharing-panel"><button class="secondary-button" type="button" data-action="share" ${state.busy ? "disabled" : ""}>↗ ${hostRoom ? "Partager le lien d’ajout" : "Inviter des amis à ajouter leurs images"}</button>${invitationUrl() ? `<input class="invite-url" readonly value="${escapeHtml(invitationUrl())}" aria-label="Lien à partager pour ajouter des images"/><button class="text-button" type="button" data-action="refresh-shared">Actualiser les contributions</button>` : ''}<p>Un lien à ouvrir sur leur téléphone. Sans compte.</p></div>`}
+    <div class="import-zone" id="drop-zone">
+      <label class="upload-button" for="image-upload">＋ Ajouter des images<input id="image-upload" type="file" accept="image/*" multiple ${state.busy ? "disabled" : ""}/></label>
+      <button class="text-button" data-action="paste" type="button" ${state.busy ? "disabled" : ""}>Coller une image</button>
+      <p>Photos, fichiers ou glisser-déposer.<br/>Les images sont envoyées à Google Gemini pour préparer les critères.</p>
+      <details><summary>Depuis un lien</summary><div class="url-import"><input id="image-url" type="url" placeholder="https://…" aria-label="Adresse directe de l’image"/><button type="button" class="small-button" data-action="import-url" ${state.busy ? "disabled" : ""}>Ajouter</button></div></details>
+    </div>
+    ${state.busy ? '<p class="preparing" role="status"><span class="spinner"></span>Préparation des images…</p>' : ""}
+    ${messageMarkup()}
+    ${state.lastDeleted ? '<button class="text-button" type="button" data-action="undo-delete">Annuler la suppression</button>' : ""}
+    ${state.personal.length ? `<div class="library-grid">${[...state.personal].sort((a, b) => b.createdAt - a.createdAt).map((card) => `<button class="library-card" type="button" data-action="edit" data-id="${card.id}"><img src="${card.image}" alt="${escapeHtml(card.title)}" loading="lazy"/><span class="library-card-title">${escapeHtml(card.title)}</span><span class="library-card-info">${guestRoom && card.shared ? 'Envoyée · ' : ''}${isPlayable(card) ? `${card.criteria.length} critères · ${durationFor(card)} s` : "À préparer"}</span></button>`).join("")}</div>` : '<div class="library-empty"><span aria-hidden="true">✧</span><p>Vos photos, vos mèmes,<br/>vos prochaines manches.</p></div>'}
+    <p class="storage-note">${guestRoom ? "Seules tes propres images sont affichées ici." : hostRoom ? "Les contributions de tes amis se synchronisent ici." : "Bibliothèque enregistrée sur cet appareil."}</p>`;
+}
+
+function renderEditor() {
+  const card = state.editing;
+  if (!card) return renderLibrary();
+  state.stage = "editor";
+  stage.className = "screen editor-screen";
+  const criteria = cleanCriteria(card.criteria);
+  stage.innerHTML = `<div class="page-heading"><button type="button" class="back-link" data-action="library-back">← Mes images</button><button type="button" class="delete-button" data-action="delete">Supprimer</button></div>
+    <figure class="editor-image"><img src="${card.image}" alt="Image personnelle à préparer"/></figure>
+    <input class="card-title-input" id="card-title" maxlength="60" value="${escapeHtml(card.title)}" aria-label="Titre de l’image"/>
+    <div class="editor-heading"><h1>Les détails à retrouver</h1><span id="editor-duration">${criteria.length} critères · ${durationFor(card)} s</span></div>
+    ${messageMarkup()}
+    <button class="secondary-button" data-action="generate" type="button" ${state.busy ? "disabled" : ""}>${state.busy ? '<span class="spinner"></span>Analyse en cours…' : `✦ ${criteria.length ? "Régénérer avec l’IA" : "Créer les critères avec l’IA"}`}</button>
+    ${state.aiAvailable === false ? '<p class="ai-status">La génération IA n’est pas encore activée. Tu peux conserver l’image et saisir tes critères.</p>' : '<p class="ai-status">Jusqu’à 10 détails clairs. La durée s’adapte automatiquement.</p>'}
+    <div class="criteria-editor">${(card.criteria.length ? card.criteria : [""]).map((text, index) => `<div class="editable-criterion"><span>${index + 1}</span><textarea rows="2" maxlength="240" data-criterion="${index}" aria-label="Critère ${index + 1}" placeholder="Un détail visible à dessiner…" ${state.busy ? "disabled" : ""}>${escapeHtml(text)}</textarea><button type="button" data-action="remove-criterion" data-index="${index}" aria-label="Retirer le critère ${index + 1}" ${state.busy ? "disabled" : ""}>×</button></div>`).join("")}</div>
+    <button type="button" class="text-button" data-action="add-criterion" ${state.busy || card.criteria.length >= MAX_CRITERIA ? "disabled" : ""}>＋ Ajouter un critère</button>
+    <div class="round-action"><button class="primary-button" type="button" data-action="save-card" ${state.busy ? "disabled" : ""}>${isPlayable(card) ? "Enregistrer la carte" : "Garder pour plus tard"} ${arrow}</button></div>`;
+}
+
+function editorValues() {
+  if (!state.editing || state.stage !== "editor") return;
+  state.editing.title = document.querySelector("#card-title").value.trim().slice(0, 60) || "Mon image";
+  state.editing.criteria = [...stage.querySelectorAll("[data-criterion]")].map((input) => input.value);
+}
+
+async function persistCard(card) {
+  const saved = { ...card, criteria: cleanCriteria(card.criteria) };
+  await savePersonalCard(saved);
+  const index = state.personal.findIndex((item) => item.id === saved.id);
+  if (index < 0) state.personal.push(saved); else state.personal[index] = saved;
+  invalidateDeck();
+  return saved;
+}
+
+async function saveAndShare(card) {
+  const saved = await persistCard(card);
+  if (!guestRoom && !hostRoom) return saved;
+  const shared = await sendCard(saved);
+  return persistCard(shared);
+}
+
+async function syncCollection() {
+  if (guestRoom || !hostRoom || state.busy || !["ready", "library"].includes(state.stage)) return;
+  const { cards: shared } = await refreshCollection();
+  if (state.busy || !["ready", "library"].includes(state.stage)) return;
+  const old = new Map(state.personal.map((card) => [card.id, card]));
+  const others = state.personal.filter((card) => card.roomId !== hostRoom.id);
+  const merged = shared.map((card) => ({ ...old.get(card.id), ...card, editToken: old.get(card.id)?.editToken }));
+  const next = [...others, ...merged];
+  const signature = (items) => JSON.stringify(items.map((card) => [card.id, card.criteria, card.title]).sort((a, b) => a[0].localeCompare(b[0])));
+  if (signature(next) !== signature(state.personal)) {
+    state.personal = next; invalidateDeck();
+    if (state.stage === "ready") renderReady(); else renderLibrary();
+  }
+}
+
+async function refreshAiAvailability() {
+  const response = await fetch("/api/config", { cache: "no-store" });
+  if (!response.ok) throw new Error("La préparation IA n’est pas disponible pour le moment.");
+  const config = await response.json();
+  state.aiAvailable = config.aiAvailable === true;
+  state.sharingAvailable = config.sharingAvailable === true;
+  return state.aiAvailable;
+}
+
+async function analysisImage(image) {
+  if (image.startsWith("data:")) return image;
+  const response = await fetch(image);
+  if (!response.ok) throw new Error("Cette image n’est plus disponible.");
+  const blob = await response.blob();
+  return (await importImage(new File([blob], "Image", { type: blob.type }))).image;
+}
+
+async function analyzeCard(card) {
+  await refreshAiAvailability();
+  const response = await fetch("/api/analyze", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image: await analysisImage(card.image) }), signal: AbortSignal.timeout(70_000)
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "L’image n’a pas pu être analysée.");
+  const prepared = { ...card, title: result.title || card.title, criteria: cleanCriteria(result.criteria) };
+  if (!isPlayable(prepared)) throw new Error("L’IA n’a pas trouvé assez de détails. Essaie une autre image.");
+  return persistCard(prepared);
+}
+
+async function addImages(files) {
+  if (state.busy || !files.length) return;
+  state.busy = true;
+  state.message = "";
+  renderLibrary();
+  let added = 0;
+  let prepared = 0;
+  let lastCard;
+  const errors = [];
+  for (const file of [...files].slice(0, 10)) {
+    if (state.personal.length >= 50) { errors.push("La bibliothèque est limitée à 50 images sur cet appareil."); break; }
+    try {
+      lastCard = await persistCard({ ...await importImage(file), ...(guestRoom ? { pendingRoomId: guestRoom.id } : {}) });
+      added++;
+      try { lastCard = await analyzeCard(lastCard); prepared++; }
+      catch (error) { errors.push(error.message); }
+      if (guestRoom || hostRoom) {
+        try { lastCard = await saveAndShare(lastCard); }
+        catch (error) { errors.push(error.message); }
+      }
+    } catch (error) { errors.push(error.message); }
+  }
+  state.busy = false;
+  state.message = errors.length ? [...new Set(errors)].join(" ") : `${prepared} carte${prepared > 1 ? 's' : ''} prête${prepared > 1 ? 's' : ''} !`;
+  if (files.length > 10) state.message += " Ajoute les images par lots de 10 maximum.";
+  if (added === 1 && lastCard) { state.editing = { ...lastCard, criteria: [...lastCard.criteria] }; renderEditor(); }
+  else renderLibrary();
+}
+
+async function pasteImage() {
+  try {
+    if (!navigator.clipboard?.read) throw new Error("Utilise le collage du navigateur ou importe une image depuis tes photos.");
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      const type = item.types.find((value) => value.startsWith("image/"));
+      if (type) return addImages([new File([await item.getType(type)], "Image collée", { type })]);
+    }
+    throw new Error("Copie l’image elle-même, puis colle-la ici. Tu peux aussi l’importer depuis tes photos.");
+  } catch (error) {
+    state.message = error.name === "NotAllowedError" ? "Le presse-papiers n’est pas accessible. Utilise le collage du navigateur ou choisis un fichier." : error.message;
+    renderLibrary();
+  }
+}
+
+async function importFromUrl() {
+  if (state.busy) return;
+  try {
+    const url = new URL(document.querySelector("#image-url").value.trim());
+    if (url.protocol !== "https:") throw new Error("Utilise une adresse d’image en https.");
+    const response = await fetch(url.href, { credentials: "omit", referrerPolicy: "no-referrer", signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) throw new Error("Chargement impossible.");
+    const blob = await response.blob();
+    return addImages([new File([blob], "Image importée", { type: blob.type })]);
+  } catch {
+    state.message = "Ce lien ne permet pas de charger l’image directement. Enregistre-la dans tes photos, puis importe-la ici.";
+    renderLibrary();
+  }
+}
+
+async function handleAction(button) {
+  const action = button.dataset.action;
+  if (state.busy) return;
+  if (action === "start") return startRound();
+  if (action === "correct") return renderCorrection();
+  if (action === "next" && state.stage === "correction") { state.card = null; return renderReady(); }
+  if (action === "mode" && state.stage === "ready") {
+    state.mode = button.dataset.mode;
+    try { localStorage.setItem("cloneit-mode", state.mode); } catch {}
+    invalidateDeck(); return renderReady();
+  }
+  if (action === "home") { state.message = ""; return renderReady(); }
+  if (action === "library") { state.message = ""; return renderLibrary(); }
+  if (action === "edit") {
+    const card = state.personal.find((item) => item.id === button.dataset.id);
+    if (card) { state.editing = { ...card, criteria: [...card.criteria] }; state.message = ""; renderEditor(); window.scrollTo(0, 0); }
+  }
+  if (action === "share") {
+    state.busy = true; state.message = ""; renderLibrary();
+    try {
+      await createCollection();
+      for (const card of [...state.personal]) if (!card.roomId) await saveAndShare(card);
+      state.message = "Lien prêt : partage-le pour que tes amis ajoutent leurs photos.";
+      const url = invitationUrl();
+      try {
+        if (navigator.share) await navigator.share({ title: "Ajoute tes images à CloneIt", url });
+        else { await navigator.clipboard.writeText(url); state.message = "Lien copié ! Envoie-le à tes amis."; }
+      } catch { /* The visible link remains available when sharing is cancelled. */ }
+    } catch (error) { state.message = error.message; }
+    finally { state.busy = false; renderLibrary(); }
+  }
+  if (action === "refresh-shared") {
+    try { await syncCollection(); state.message = "Contributions à jour."; }
+    catch (error) { state.message = error.message; }
+    renderLibrary();
+  }
+  if (action === "paste") return pasteImage();
+  if (action === "import-url") return importFromUrl();
+  if (["save-card", "library-back"].includes(action)) {
+    editorValues(); await saveAndShare(state.editing); state.editing = null; state.message = ""; renderLibrary(); window.scrollTo(0, 0);
+  }
+  if (action === "generate") {
+    editorValues(); state.busy = true; state.message = ""; renderEditor();
+    try { state.editing = await analyzeCard(state.editing); if (guestRoom || hostRoom) state.editing = await saveAndShare(state.editing); }
+    catch (error) { state.message = error.message; }
+    finally { state.busy = false; renderEditor(); }
+  }
+  if (action === "add-criterion") {
+    editorValues(); if (state.editing.criteria.length < MAX_CRITERIA) state.editing.criteria.push(""); renderEditor();
+    stage.querySelector(".editable-criterion:last-child textarea")?.focus();
+  }
+  if (action === "remove-criterion") { editorValues(); state.editing.criteria.splice(Number(button.dataset.index), 1); renderEditor(); }
+  if (action === "delete") {
+    state.lastDeleted = state.personal.find((card) => card.id === state.editing.id);
+    if (state.lastDeleted && !state.lastDeleted.image.startsWith("data:")) state.lastDeleted = { ...state.lastDeleted, image: await analysisImage(state.lastDeleted.image) };
+    if (state.editing.roomId) await removeSharedCard(state.editing);
+    await deletePersonalCard(state.editing.id);
+    state.personal = state.personal.filter((card) => card.id !== state.editing.id);
+    state.editing = null; invalidateDeck(); state.message = "Image supprimée."; renderLibrary();
+  }
+  if (action === "undo-delete" && state.lastDeleted) {
+    const restore = { ...state.lastDeleted }; delete restore.roomId; delete restore.shared; delete restore.editToken;
+    if (!restore.image.startsWith("data:")) {
+      const response = await fetch(restore.image); const file = new File([await response.blob()], restore.title, { type: response.headers.get("Content-Type") || "image/jpeg" });
+      const imported = await importImage(file); restore.image = imported.image;
+    }
+    await saveAndShare(restore); state.lastDeleted = null; state.message = "Image restaurée."; renderLibrary();
+  }
+}
+
 app.addEventListener("click", (event) => {
-  const action = event.target.closest("[data-action]")?.dataset.action;
-  if (action === "start") startRound();
-  else if (action === "correct") renderCorrection();
-  else if (action === "next" && state.stage === "correction") renderReady();
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+  handleAction(button).catch((error) => { state.message = error.message; if (state.stage === "editor") renderEditor(); else if (state.stage === "library") renderLibrary(); });
+});
+app.addEventListener("change", (event) => {
+  if (event.target.id === "image-upload") addImages(event.target.files);
+});
+app.addEventListener("input", (event) => {
+  if (event.target.matches("[data-criterion]")) {
+    editorValues();
+    document.querySelector("#editor-duration").textContent = `${cleanCriteria(state.editing.criteria).length} critères · ${durationFor(state.editing)} s`;
+    const save = stage.querySelector('[data-action="save-card"]');
+    save.innerHTML = `${isPlayable(state.editing) ? "Enregistrer la carte" : "Garder pour plus tard"} ${arrow}`;
+  }
+});
+document.addEventListener("paste", (event) => {
+  if (!["ready", "library"].includes(state.stage)) return;
+  const files = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith("image/"));
+  if (files.length) { event.preventDefault(); addImages(files); }
+});
+app.addEventListener("dragover", (event) => {
+  if (state.stage === "library") { event.preventDefault(); document.querySelector("#drop-zone")?.classList.add("drag-over"); }
+});
+app.addEventListener("dragleave", () => document.querySelector("#drop-zone")?.classList.remove("drag-over"));
+app.addEventListener("drop", (event) => {
+  if (state.stage === "library") { event.preventDefault(); addImages([...(event.dataTransfer?.files || [])]); }
 });
 
 document.addEventListener("visibilitychange", () => {
@@ -381,4 +675,12 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 }
 
-renderReady();
+if (guestRoom) renderLibrary(); else renderReady();
+listPersonalCards().then(async (saved) => {
+  state.personal = guestRoom ? saved.filter((card) => card.roomId === guestRoom.id || card.pendingRoomId === guestRoom.id) : saved;
+  if (state.stage === "ready") { invalidateDeck(); renderReady(); }
+  else if (state.stage === "library") renderLibrary();
+  await syncCollection();
+}).catch((error) => { state.message = error.message; });
+refreshAiAvailability().catch(() => { state.aiAvailable = null; });
+window.setInterval(() => syncCollection().catch(() => {}), 15_000);

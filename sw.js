@@ -1,5 +1,5 @@
-const CACHE_NAME = "cloneit-pwa-v3";
-const APP_SHELL = ["/", "/index.html", "/src/app.js", "/src/styles.css", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
+const CACHE_NAME = "cloneit-pwa-v4";
+const APP_SHELL = ["/", "/index.html", "/src/app.js", "/src/styles.css", "/src/library.js", "/src/sharing.js", "/src/game-rules.js", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 const CARD_FILES = Array.from({ length: 26 }, (_, index) => `/cards/scene-${String(index + 1).padStart(2, "0")}.png`);
 
 self.addEventListener("install", (event) => {
@@ -12,6 +12,7 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET" || new URL(event.request.url).origin !== self.location.origin) return;
+  if (new URL(event.request.url).pathname.startsWith("/api/")) return;
   event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
     if (response.ok) caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response.clone()));
     return response;
