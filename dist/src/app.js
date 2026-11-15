@@ -184,30 +184,20 @@ const cards = [
 ];
 
 const app = document.querySelector("#app");
+const ROUND_DURATION = 90_000;
 const state = {
   stage: "ready",
   deck: [],
   deckPosition: 0,
-  roundNumber: 0,
+  roundsPlayed: 0,
   card: null,
   secondsLeft: 90,
-  timerEnd: null,
-  timer: null
+  timerEnd: 0,
+  timer: null,
+  progressAnimation: null
 };
 
-const icon = (name, size = 20) => {
-  const paths = {
-    sparkle: '<path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z"/><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/>',
-    plus: '<path d="M12 5v14M5 12h14"/>',
-    arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
-    expand: '<path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/>',
-    close: '<path d="m18 6-12 12M6 6l12 12"/>',
-    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-    back: '<path d="m15 18-6-6 6-6"/>',
-    trash: '<path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3"/>'
-  };
-  return `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[name] || ""}</svg>`;
-};
+const arrow = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>';
 
 const shuffle = (items) => {
   const copy = [...items];
@@ -218,145 +208,177 @@ const shuffle = (items) => {
   return copy;
 };
 
-const roundLabel = () => `Manche ${String(state.roundNumber).padStart(2, "0")}`;
-
-function renderHeader({ badge = "" } = {}) {
-  return `<header class="topbar">
-    <div class="brand-lockup">
-      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M7 6h13a4 4 0 0 1 4 4v15H11a4 4 0 0 1-4-4V6Z"/><path d="M7 6v15a4 4 0 0 0 4 4"/><circle cx="14" cy="14" r="1"/><circle cx="19" cy="14" r="1"/><path d="M14 18c1.5 1.8 3.5 1.8 5 0"/></svg></span>
-      <span class="brand-name">CloneIt</span>
-    </div>
-    ${badge ? `<span class="topbar-badge">${badge}</span>` : ""}
-  </header>`;
-}
-
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 }
 
-function prepareRound() {
-  if (!state.deck.length || state.deckPosition >= state.deck.length) {
+app.innerHTML = `<div class="app-shell">
+  <header class="topbar"><span class="brand-name">Clone<span>It</span><i aria-hidden="true">✳</i></span></header>
+  <main id="stage" class="screen"></main>
+</div>`;
+const stage = document.querySelector("#stage");
+
+function homeArtwork() {
+  return `<div class="home-art" aria-hidden="true">
+    <svg class="sketch-stack" viewBox="0 0 360 290" fill="none">
+      <path d="M29 81c-11-14-11-31 1-38m-7 17-9 1m16-12-5-7" stroke="#eb846c" stroke-width="3" stroke-linecap="round"/>
+      <path d="m311 181 10 7m-15 5 1 11m16-4 7 6" stroke="#4873b9" stroke-width="3" stroke-linecap="round"/>
+      <g transform="rotate(9 207 157)">
+        <rect x="104" y="46" width="197" height="219" rx="22" fill="#7192cb" opacity=".16" transform="translate(0 7)"/>
+        <rect x="104" y="46" width="197" height="219" rx="22" fill="#a6c5f8" stroke="#7299d8" stroke-width="1.5"/>
+        <rect x="115" y="57" width="175" height="197" rx="15" stroke="#dce9ff" stroke-width="1.5" stroke-dasharray="5 6"/>
+      </g>
+      <g transform="rotate(-8 162 143)">
+        <rect x="58" y="28" width="202" height="229" rx="22" fill="#2b5289" opacity=".10" transform="translate(0 7)"/>
+        <rect x="58" y="28" width="202" height="229" rx="22" fill="#fffdf4" stroke="#d7dfeb" stroke-width="1.5"/>
+        <path d="M80 220c37-6 56 3 77-1s58-2 81 1" stroke="#c6d5e9" stroke-width="2" stroke-linecap="round"/>
+        <path d="m100 153 58-55 61 54m-107-7v63h94v-65" stroke="#315d9f" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M147 208v-39h24v39m17-58h-20v-18h20v18Z" stroke="#315d9f" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M203 95c7-16 22-18 29-4" stroke="#eb846c" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="219" cy="78" r="12" stroke="#eb846c" stroke-width="3"/>
+        <path d="m219 56 1-6m16 16 5-4m-39 4-4-4m38 23 6 2" stroke="#eb846c" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M82 195c-4-7-3-16 2-21m2 23c2-7 5-10 9-12" stroke="#4e947d" stroke-width="3" stroke-linecap="round"/>
+      </g>
+      <g transform="rotate(25 268 198)">
+        <path d="M258 145h20v96l-10 21-10-21v-96Z" fill="#ed947d" stroke="#cc705c" stroke-width="1.5" stroke-linejoin="round"/>
+        <path d="M258 241h20l-10 21-10-21Z" fill="#f8dfb6"/>
+        <path d="m264 254 4 8 4-8" fill="#315d9f"/>
+        <path d="M268 147v92" stroke="#ffcebc" stroke-width="3"/>
+        <path d="M258 141a4 4 0 0 1 4-4h12a4 4 0 0 1 4 4v11h-20v-11Z" fill="#cadbf1" stroke="#91acd0" stroke-width="1.5"/>
+      </g>
+    </svg>
+    <span class="time-sticker">90<span>secondes</span></span>
+  </div>`;
+}
+
+function renderReady() {
+  state.stage = "ready";
+  stage.className = "screen ready-screen";
+  const firstRound = state.roundsPlayed === 0;
+  stage.innerHTML = `
+    <section class="welcome">
+      ${homeArtwork()}
+      <h1>${firstRound ? 'À vos<br/><span>gribouillis !</span>' : 'Au prochain<br/><span>narrateur !</span>'}</h1>
+      <p>${firstRound ? 'Un joueur décrit l’image, les autres dessinent sur papier. Puis, on compare !' : 'Passez le téléphone. La nouvelle image se dévoile au départ du chrono.'}</p>
+    </section>
+    <div class="round-action"><button class="primary-button" type="button" data-action="start">Commencer la manche ${arrow}</button></div>`;
+  window.scrollTo(0, 0);
+}
+
+function chooseCard() {
+  if (state.deckPosition >= state.deck.length) {
     state.deck = shuffle(cards.map((_, index) => index));
     state.deckPosition = 0;
   }
   state.card = cards[state.deck[state.deckPosition++]];
-  state.roundNumber += 1;
-  state.secondsLeft = 90;
-  state.stage = "ready";
-  renderReady();
-}
-
-function renderReady() {
-  app.innerHTML = `<main class="screen game-screen ready-screen">
-    ${renderHeader({ badge: roundLabel() })}
-    <section class="ready-content">
-      <h1>Prêts&nbsp;?</h1>
-      <div class="sealed-card" aria-hidden="true"><span class="sealed-logo">C<span>.</span></span></div>
-    </section>
-    <div class="bottom-action"><button class="primary-button" type="button" data-action="start-timer">Lancer 1:30 ${icon("arrow", 19)}</button></div>
-  </main>`;
-}
-
-function timerMarkup() {
-  return `<div class="timer-dominant" aria-live="off"><span class="timer-readout" aria-label="${formatTime(state.secondsLeft)}">${formatTime(state.secondsLeft)}</span><span class="timer-track"><i class="timer-progress" style="width:100%"></i></span></div>`;
+  state.roundsPlayed += 1;
 }
 
 function formatTime(total) {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
-function renderDraw() {
-  app.innerHTML = `<main class="screen game-screen draw-screen">
-    ${renderHeader({ badge: roundLabel() })}
-    ${timerMarkup()}
-    ${renderIllustrationCard("draw-image-card")}
-    <div class="bottom-action draw-bottom"><button class="primary-button finish-button" type="button" data-action="finish">Correction ${icon("arrow", 19)}</button></div>
-  </main>`;
+function renderImage() {
+  return `<figure class="scene"><img class="scene-image" src="${state.card.image}" alt="Illustration à décrire et à comparer aux dessins" /></figure>`;
 }
 
-function renderIllustrationCard(className = "") {
-  return `<figure class="illustration-card ${className}">
-    <div class="illustration-card-top"><button class="zoom-button" type="button" data-action="fullscreen" aria-label="Afficher l’illustration en plein écran">${icon("expand", 17)}<span>Agrandir</span></button></div>
-    <div class="illustration-image-wrap"><img src="${state.card.image}" alt="Illustration à décrire aux joueurs" /></div>
-  </figure>`;
+function renderDraw() {
+  stage.className = "screen draw-screen";
+  stage.innerHTML = `<section class="timer" aria-label="Temps restant">
+      <span class="timer-readout" role="timer" aria-live="off">${formatTime(state.secondsLeft)}</span>
+      <div class="timer-track" aria-hidden="true"><div class="timer-progress"></div></div>
+    </section>
+    ${renderImage()}
+    <div class="round-ending" aria-live="polite"></div>`;
+}
+
+function animateProgress() {
+  state.progressAnimation?.cancel();
+  const bar = document.querySelector(".timer-progress");
+  const remaining = Math.max(0, state.timerEnd - Date.now());
+  // The bar runs on its own timeline, independently of the seconds display.
+  state.progressAnimation = bar?.animate(
+    [{ transform: `scaleX(${remaining / ROUND_DURATION})` }, { transform: "scaleX(0)" }],
+    { duration: remaining, easing: "linear", fill: "forwards" }
+  );
+}
+
+function tick() {
+  if (state.stage !== "draw") return;
+  state.secondsLeft = Math.max(0, Math.ceil((state.timerEnd - Date.now()) / 1000));
+  const readout = document.querySelector(".timer-readout");
+  if (readout && readout.textContent !== formatTime(state.secondsLeft)) {
+    readout.textContent = formatTime(state.secondsLeft);
+  }
+  if (state.secondsLeft === 0) finishRound();
+}
+
+function finishRound() {
+  if (state.stage !== "draw") return;
+  clearInterval(state.timer);
+  state.timer = null;
+  state.progressAnimation?.cancel();
+  state.progressAnimation = null;
+  state.stage = "finished";
+  stage.classList.add("round-finished");
+  document.querySelector(".timer-progress").style.transform = "scaleX(0)";
+  document.querySelector(".timer-readout").textContent = "00:00";
+  document.querySelector(".round-ending").innerHTML = `<p>C’est l’heure de la correction !</p><button class="primary-button" type="button" data-action="correct">Voir la correction ${arrow}</button>`;
+}
+
+async function startRound() {
+  if (state.stage !== "ready") return;
+  state.stage = "loading";
+  const button = stage.querySelector("button");
+  button.disabled = true;
+  chooseCard();
+  // Load the model before the 90 seconds begin.
+  const model = new Image();
+  model.src = state.card.image;
+  try { await model.decode(); } catch { /* A cached image can still render. */ }
+  state.secondsLeft = 90;
+  state.timerEnd = Date.now() + ROUND_DURATION;
+  state.stage = "draw";
+  renderDraw();
+  animateProgress();
+  state.timer = window.setInterval(tick, 100);
 }
 
 function renderCorrection() {
-  clearInterval(state.timer);
-  state.timer = null;
-  closeFullscreen();
+  if (state.stage !== "finished") return;
   state.stage = "correction";
-  const criteria = state.card.criteria.map((item, index) => `<li class="criterion-row"><span class="criterion-number">${String(index + 1).padStart(2, "0")}</span><span class="criterion-text">${escapeHtml(item)}</span><span class="criterion-point">+1<span>pt</span></span></li>`).join("");
-  app.innerHTML = `<main class="screen game-screen correction-screen">
-    ${renderHeader({ badge: roundLabel() })}
-    <section class="correction-content">
-      ${renderIllustrationCard("correction-image-card")}
-      <div class="criteria-heading"><h1>À vérifier ensemble</h1></div>
-      <ol class="criteria-list">${criteria}</ol>
+  stage.className = "screen correction-screen";
+  stage.innerHTML = `${renderImage()}
+    <section class="criteria" aria-labelledby="criteria-title">
+      <h1 id="criteria-title">À vérifier ensemble</h1>
+      <ol class="criteria-list">${state.card.criteria.map((item, index) => `<li class="criterion-row"><span class="criterion-number" aria-hidden="true">${index + 1}</span><span class="criterion-text">${escapeHtml(item)}</span><span class="criterion-point">+1</span></li>`).join("")}</ol>
     </section>
-    <div class="bottom-action correction-bottom"><button class="primary-button" type="button" data-action="next">Suivante ${icon("arrow", 19)}</button></div>
-  </main>`;
-}
-
-function openFullscreen() {
-  if (document.querySelector("#image-modal")) return;
-  const modal = document.createElement("div");
-  modal.className = "image-modal";
-  modal.id = "image-modal";
-  modal.setAttribute("role", "dialog");
-  modal.setAttribute("aria-modal", "true");
-  modal.setAttribute("aria-label", "Illustration");
-  const modalTimer = state.stage === "draw" ? `<span class="modal-timer" aria-label="${formatTime(state.secondsLeft)}">${formatTime(state.secondsLeft)}</span>` : "";
-  modal.innerHTML = `<div class="modal-toolbar"><span></span><div class="modal-controls">${modalTimer}<button class="modal-close" type="button" data-action="close-fullscreen" aria-label="Fermer">${icon("close", 22)}</button></div></div><img src="${state.card.image}" alt="Illustration" />`;
-  document.body.append(modal);
-  document.body.classList.add("modal-open");
-  modal.querySelector("button").focus();
-}
-
-function closeFullscreen() {
-  document.querySelector("#image-modal")?.remove();
-  document.body.classList.remove("modal-open");
-}
-
-function startTimer() {
-  state.stage = "draw";
-  state.secondsLeft = 90;
-  state.timerEnd = Date.now() + 90_000;
-  renderDraw();
-  state.timer = window.setInterval(() => {
-    state.secondsLeft = Math.max(0, Math.ceil((state.timerEnd - Date.now()) / 1000));
-    const readouts = document.querySelectorAll(".timer-readout, .modal-timer");
-    readouts.forEach((readout) => {
-      readout.textContent = formatTime(state.secondsLeft);
-      readout.setAttribute("aria-label", `${state.secondsLeft} secondes restantes`);
-    });
-    const progress = document.querySelector(".timer-progress");
-    if (progress) progress.style.width = `${(state.secondsLeft / 90) * 100}%`;
-    if (state.secondsLeft <= 0) renderCorrection();
-  }, 200);
+    <div class="round-action"><button class="primary-button" type="button" data-action="next">Manche suivante ${arrow}</button></div>`;
+  window.scrollTo(0, 0);
 }
 
 app.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-action]");
-  if (!button) return;
-  const action = button.dataset.action;
-  if (action === "start-timer") startTimer();
-  else if (action === "finish") renderCorrection();
-  else if (action === "next") prepareRound();
-  else if (action === "fullscreen") openFullscreen();
-  else if (action === "close-fullscreen") closeFullscreen();
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeFullscreen();
+  const action = event.target.closest("[data-action]")?.dataset.action;
+  if (action === "start") startRound();
+  else if (action === "correct") renderCorrection();
+  else if (action === "next" && state.stage === "correction") renderReady();
 });
 
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible" || state.stage !== "draw") return;
-  state.secondsLeft = Math.max(0, Math.ceil((state.timerEnd - Date.now()) / 1000));
-  if (state.secondsLeft <= 0) renderCorrection();
+  if (document.visibilityState === "visible" && state.stage === "draw") {
+    tick();
+    if (state.stage === "draw") animateProgress();
+  }
 });
 
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+if ("serviceWorker" in navigator) {
+  let hadController = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    // Pick up an installed update on the welcome screen without interrupting a round.
+    if (hadController && state.stage === "ready") window.location.reload();
+    hadController = true;
+  });
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+}
 
-prepareRound();
+renderReady();
