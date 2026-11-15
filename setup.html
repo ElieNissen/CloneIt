@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Configurer Gemini · CloneIt</title>
+  <link rel="stylesheet" href="/src/styles.css?setup=1" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar"><span class="brand-name">Clone<span>It</span><i aria-hidden="true">✳</i></span></header>
+    <main class="screen setup-screen">
+      <h1>Un dernier<br/>petit réglage.</h1>
+      <p>Active la préparation des critères avec Gemini. Cette page est réservée à l’organisateur.</p>
+      <p id="setup-status" role="status">Vérification du lien privé…</p>
+      <form id="setup-form" hidden>
+        <ol class="setup-steps">
+          <li>Ouvre <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Google AI Studio ↗</a> et crée une clé dans un projet <strong>Free Tier</strong>.</li>
+          <li>Garde la facturation du projet désactivée.</li>
+          <li>Colle la clé ci-dessous. Elle sera chiffrée et conservée côté serveur.</li>
+        </ol>
+        <label class="setup-label" for="gemini-key">Clé API Gemini</label>
+        <input id="gemini-key" type="password" minlength="30" maxlength="256" required autocomplete="off" spellcheck="false" placeholder="Colle la clé ici" />
+        <label class="setup-confirm"><input id="free-tier" type="checkbox" required /><span>J’ai vérifié que ce projet Google utilise le palier gratuit, sans facturation activée.</span></label>
+        <button id="setup-submit" class="primary-button" type="submit">Activer Gemini</button>
+        <p class="storage-note">La vérification de la clé ne génère pas d’image ni de critères. Cette page se verrouille après l’enregistrement.</p>
+      </form>
+      <a id="setup-done" class="primary-button" href="/" hidden>Retour au jeu →</a>
+    </main>
+  </div>
+  <script type="module" src="/src/setup.js"></script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "cloneit-pwa-v4";
+const CACHE_NAME = "cloneit-pwa-v5";
 const APP_SHELL = ["/", "/index.html", "/src/app.js", "/src/styles.css", "/src/library.js", "/src/sharing.js", "/src/game-rules.js", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 const CARD_FILES = Array.from({ length: 26 }, (_, index) => `/cards/scene-${String(index + 1).padStart(2, "0")}.png`);
 

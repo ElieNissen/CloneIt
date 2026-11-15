@@ -197,3 +197,16 @@ body::after {
   .ready-screen .welcome { padding-bottom: 2px; }
 }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }
+
+[hidden] { display: none !important; }
+.setup-screen { padding-top: 12px; padding-bottom: 40px; }
+.setup-screen > h1 { margin: 0 0 20px; font: 600 40px/1.05 var(--display); color: var(--blue-dark); }
+.setup-screen > p { color: #586f92; line-height: 1.55; font-size: 16px; }
+#setup-status { padding: 14px 16px; border: 1px solid #c0d0e7; border-radius: 15px; background: var(--paper); }
+.setup-steps { display: grid; gap: 12px; padding-left: 23px; margin: 25px 0; color: #476083; font-size: 15px; line-height: 1.5; }
+.setup-steps a { color: var(--blue-dark); }
+.setup-label { display: block; margin: 0 0 9px; color: var(--ink); font-size: 16px; font-weight: 600; }
+#gemini-key { display: block; width: 100%; padding: 15px; border: 1px solid #b2c7e4; border-radius: 14px; color: var(--ink); background: var(--paper); font-size: 16px; }
+.setup-confirm { display: flex; align-items: flex-start; gap: 12px; margin: 22px 0; color: #4f688b; font-size: 14px; line-height: 1.5; }
+.setup-confirm input { flex: 0 0 auto; width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--blue); }
+#setup-done { margin-top: 25px; text-decoration: none; }

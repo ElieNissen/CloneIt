@@ -1,3 +1,4 @@
+import { configuredGeminiKey, handleSetup } from "./setup.mjs";
 import { cleanCriteria, durationFor, MIN_CRITERIA, MAX_CRITERIA } from "../src/game-rules.js";
 
 const MAX_BODY = 4_100_000;
@@ -173,9 +174,11 @@ export function createWorker(assets = {}, upstreamFetch = fetch) {
   return {
     async fetch(request, env = {}) {
       const url = new URL(request.url);
-      const configured = Boolean(env.GEMINI_API_KEY && env.GEMINI_FREE_TIER_CONFIRMED === "true");
+      if (url.pathname === "/api/setup") return handleSetup(request, env, upstreamFetch);
+      const runtimeKey = ["/api/config", "/api/analyze"].includes(url.pathname) ? await configuredGeminiKey(env) : null;
+      const configured = Boolean(runtimeKey);
       if (url.pathname === "/api/config" && request.method === "GET") {
-        const headers = configured ? { "Set-Cookie": await sessionCookie(env.GEMINI_API_KEY) } : {};
+        const headers = configured ? { "Set-Cookie": await sessionCookie(runtimeKey) } : {};
         return json({ aiAvailable: configured, sharingAvailable: Boolean(env.BUCKET) }, 200, headers);
       }
       if (url.pathname.startsWith("/api/rooms") || url.pathname.startsWith("/media/")) {
@@ -186,7 +189,7 @@ export function createWorker(assets = {}, upstreamFetch = fetch) {
         if (request.method !== "POST") return json({ error: "Méthode non autorisée." }, 405, { Allow: "POST" });
         if (!configured) return json({ error: "La génération IA n’est pas encore activée. Tu peux garder cette image et préparer les critères à la main.", code: "ai_unavailable" }, 503);
         if (request.headers.get("Origin") !== url.origin || !request.headers.get("Content-Type")?.startsWith("application/json")) return json({ error: "Requête non autorisée." }, 403);
-        if (!(await validSession(request, env.GEMINI_API_KEY))) return json({ error: "La session a expiré. Relance la préparation.", code: "session_expired" }, 401);
+        if (!(await validSession(request, runtimeKey))) return json({ error: "La session a expiré. Relance la préparation.", code: "session_expired" }, 401);
         let data;
         try { data = await readJson(request); }
         catch (error) { return json({ error: error.message === "too_large" ? "Image trop volumineuse." : "Image non valide." }, 400); }
@@ -200,7 +203,7 @@ export function createWorker(assets = {}, upstreamFetch = fetch) {
           const model = "gemini-3.5-flash-lite";
           const response = await upstreamFetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+            headers: { "Content-Type": "application/json", "x-goog-api-key": runtimeKey },
             signal: AbortSignal.timeout(60_000),
             body: JSON.stringify({
               systemInstruction: { parts: [{ text: instructions }] },
@@ -228,7 +231,7 @@ export function createWorker(assets = {}, upstreamFetch = fetch) {
       }
       if (url.pathname.startsWith("/api/")) return json({ error: "Introuvable." }, 404);
       if (!["GET", "HEAD"].includes(request.method)) return new Response("Method not allowed", { status: 405 });
-      const path = url.pathname === "/" ? "/index.html" : url.pathname;
+      const path = url.pathname === "/" ? "/index.html" : url.pathname === "/setup" ? "/setup.html" : url.pathname;
       const asset = assets[path];
       if (!asset) return new Response("Not found", { status: 404 });
       const body = request.method === "HEAD" ? null : Uint8Array.from(atob(asset.data), (c) => c.charCodeAt(0));
