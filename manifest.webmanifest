@@ -1,7 +1,7 @@
 {
-  "name": "Duplik — à vous de raconter",
-  "short_name": "Duplik",
-  "description": "Le compagnon de table des narrateurs Duplik.",
+  "name": "CloneIt",
+  "short_name": "CloneIt",
+  "description": "Draw, describe, compare and score.",
   "lang": "fr-FR",
   "start_url": "/",
   "display": "standalone",

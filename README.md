@@ -1,6 +1,6 @@
-# Duplik
+# CloneIt
 
-Compagnon PWA mobile pour les manches de narration et de correction de Duplik. Les images extraites du PDF fourni et leurs critères restent dans l’ordre du jeu ; les colonnes de cartes ont été rapprochées en inversant gauche et droite.
+Mobile PWA for a draw, describe, compare and score party game. The 26 supplied illustrations and their criteria are included in the app.
 
 ## Lancer en local
 

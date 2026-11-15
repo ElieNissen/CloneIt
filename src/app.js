@@ -184,20 +184,11 @@ const cards = [
 ];
 
 const app = document.querySelector("#app");
-const safeLoadPlayers = () => {
-  try {
-    const saved = JSON.parse(localStorage.getItem("duplik.players") || "null");
-    return Array.isArray(saved) && saved.length >= 2 ? saved.map((n) => String(n)) : ["Joueur 1", "Joueur 2"];
-  } catch { return ["Joueur 1", "Joueur 2"]; }
-};
-
 const state = {
-  stage: "home",
-  players: safeLoadPlayers(),
+  stage: "ready",
   deck: [],
   deckPosition: 0,
   roundNumber: 0,
-  narratorIndex: 0,
   card: null,
   secondsLeft: 90,
   timerEnd: null,
@@ -227,63 +218,16 @@ const shuffle = (items) => {
   return copy;
 };
 
-const nameAt = (index) => state.players[index] || `Joueur ${index + 1}`;
-const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map((part) => part[0] || "?").join("").toUpperCase();
 const roundLabel = () => `Manche ${String(state.roundNumber).padStart(2, "0")}`;
-const savePlayers = () => localStorage.setItem("duplik.players", JSON.stringify(state.players));
 
-function renderHeader({ back = false, badge = "" } = {}) {
+function renderHeader({ badge = "" } = {}) {
   return `<header class="topbar">
     <div class="brand-lockup">
       <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M7 6h13a4 4 0 0 1 4 4v15H11a4 4 0 0 1-4-4V6Z"/><path d="M7 6v15a4 4 0 0 0 4 4"/><circle cx="14" cy="14" r="1"/><circle cx="19" cy="14" r="1"/><path d="M14 18c1.5 1.8 3.5 1.8 5 0"/></svg></span>
-      <span class="brand-name">duplik<span class="brand-period">.</span></span>
+      <span class="brand-name">CloneIt</span>
     </div>
     ${badge ? `<span class="topbar-badge">${badge}</span>` : ""}
-    ${back ? `<button class="icon-button back-button" type="button" data-action="home" aria-label="Retour à l’accueil">${icon("back")}</button>` : ""}
   </header>`;
-}
-
-function renderHome() {
-  state.stage = "home";
-  app.innerHTML = `<main class="screen home-screen">
-    ${renderHeader({ badge: "LE JEU DES DÉTAILS" })}
-    <section class="home-hero" aria-labelledby="home-title">
-      <div class="hero-copy">
-        <span class="eyebrow"><span class="eyebrow-dot"></span> COMPAGNON DE TABLE</span>
-        <h1 id="home-title">À vous<br/>de <span>raconter.</span></h1>
-        <p>Une image, 90 secondes et mille petits détails à faire deviner.</p>
-      </div>
-      <div class="hero-art" aria-hidden="true">
-        <span class="hero-spark hero-spark-one">✳</span><span class="hero-spark hero-spark-two">✦</span>
-        <div class="hero-card hero-card-back"><span class="card-back-mark">d.</span><span class="card-back-dots">•••</span></div>
-        <div class="hero-card hero-card-front"><span class="tiny-eye eye-one"></span><span class="tiny-eye eye-two"></span><span class="tiny-smile"></span></div>
-      </div>
-      <div class="hero-foot"><span>26 scènes à découvrir</span><span class="hero-foot-dot"></span><span>À tour de rôle</span></div>
-    </section>
-
-    <section class="table-setup" aria-labelledby="table-title">
-      <div class="section-heading">
-        <div><span class="eyebrow">AVANT DE COMMENCER</span><h2 id="table-title">Qui est autour de la table&nbsp;?</h2></div>
-        <span class="player-count" id="player-count">${state.players.length}<span> joueurs</span></span>
-      </div>
-      <div class="player-list" id="player-list">${renderPlayerRows()}</div>
-      <button class="add-player" type="button" data-action="add-player">${icon("plus", 17)} <span>Ajouter un joueur</span></button>
-    </section>
-
-    <div class="home-action-wrap">
-      <button class="primary-button start-button" type="button" data-action="begin">Lancer la première manche ${icon("arrow", 19)}</button>
-      <p class="button-caption">Le téléphone passe de main en main.</p>
-    </div>
-    <footer class="home-footer"><span>${icon("clock", 15)} <span>1 min 30 par dessin</span></span><i></i><span>Le narrateur ne dessine pas</span></footer>
-  </main>`;
-}
-
-function renderPlayerRows() {
-  return state.players.map((name, index) => `<label class="player-row" for="player-${index}">
-    <span class="player-avatar avatar-${index % 5}">${initials(name || `Joueur ${index + 1}`)}</span>
-    <span class="player-row-meta"><span class="player-label">JOUEUR ${String(index + 1).padStart(2, "0")}</span><input id="player-${index}" class="player-input" data-player-index="${index}" type="text" maxlength="18" autocomplete="off" value="${escapeHtml(name)}" aria-label="Prénom du joueur ${index + 1}" /></span>
-    ${index > 1 ? `<button class="remove-player" type="button" data-action="remove-player" data-index="${index}" aria-label="Retirer ${escapeHtml(name || `le joueur ${index + 1}`)}">${icon("close", 16)}</button>` : ""}
-  </label>`).join("");
 }
 
 function escapeHtml(value) {
@@ -297,35 +241,24 @@ function prepareRound() {
   }
   state.card = cards[state.deck[state.deckPosition++]];
   state.roundNumber += 1;
-  state.narratorIndex = (state.roundNumber - 1) % state.players.length;
   state.secondsLeft = 90;
   state.stage = "ready";
   renderReady();
 }
 
 function renderReady() {
-  const narrator = nameAt(state.narratorIndex);
   app.innerHTML = `<main class="screen game-screen ready-screen">
-    ${renderHeader({ back: true, badge: roundLabel() })}
-    <div class="stage-meter" aria-label="Préparation avant le dessin"><span class="stage-meter-fill"></span><span class="stage-meter-label">À VOUS, ${escapeHtml(narrator.toLocaleUpperCase("fr-FR"))}</span><span class="stage-index">01 <i>/</i> 02</span></div>
+    ${renderHeader({ badge: roundLabel() })}
     <section class="ready-content">
-      <div class="round-bubble">${icon("sparkle", 15)} <span>LA PROCHAINE SCÈNE EST CHOISIE</span></div>
-      <h1>Tout le monde<br/>est prêt<span> ?</span></h1>
-      <p class="ready-copy">Passez le téléphone à <strong>${escapeHtml(narrator)}</strong>. La scène se dévoile au lancement du chrono.</p>
-      <div class="sealed-card" aria-label="Illustration cachée jusqu’au début du chrono">
-        <div class="sealed-topline"><span>SCÈNE N° ${String((state.deckPosition)).padStart(2, "0")}</span><span class="sealed-star">✳</span></div>
-        <div class="sealed-inner"><span class="sealed-logo">d<span>.</span></span><span class="sealed-caption">La surprise reste<br/>bien gardée.</span><span class="sealed-decoration decor-a">✦</span><span class="sealed-decoration decor-b">✳</span></div>
-        <div class="sealed-bottomline"><span>À DÉCOUVRIR</span><span>DU PLI K</span></div>
-      </div>
-      <div class="ready-hint"><span class="hint-icon">↗</span><span>Assure-toi que les dessinateurs<br/>ne voient pas l’écran.</span></div>
+      <h1>Prêts&nbsp;?</h1>
+      <div class="sealed-card" aria-hidden="true"><span class="sealed-logo">C<span>.</span></span></div>
     </section>
-    <div class="bottom-action"><button class="primary-button" type="button" data-action="start-timer">Oui, lancer 1 min 30 ${icon("arrow", 19)}</button><p class="button-caption">Tu regardes, tu racontes, ils dessinent.</p></div>
+    <div class="bottom-action"><button class="primary-button" type="button" data-action="start-timer">Lancer 1:30 ${icon("arrow", 19)}</button></div>
   </main>`;
 }
 
 function timerMarkup() {
-  const progress = Math.max(0, Math.min(1, state.secondsLeft / 90));
-  return `<div class="timer-pill" aria-live="off"><span class="timer-ring" style="--timer-progress:${progress}"><span class="timer-center">${icon("clock", 16)}</span></span><span class="timer-readout" aria-label="${formatTime(state.secondsLeft)}">${formatTime(state.secondsLeft)}</span></div>`;
+  return `<div class="timer-dominant" aria-live="off"><span class="timer-readout" aria-label="${formatTime(state.secondsLeft)}">${formatTime(state.secondsLeft)}</span><span class="timer-track"><i class="timer-progress" style="width:100%"></i></span></div>`;
 }
 
 function formatTime(total) {
@@ -333,25 +266,18 @@ function formatTime(total) {
 }
 
 function renderDraw() {
-  const narrator = nameAt(state.narratorIndex);
   app.innerHTML = `<main class="screen game-screen draw-screen">
-    ${renderHeader({ back: true, badge: roundLabel() })}
-    <section class="draw-heading">
-      <div class="draw-heading-copy"><span class="eyebrow live-eyebrow"><span class="live-dot"></span> À DESSINER</span><h1>À toi de<br/>raconter, <span>${escapeHtml(narrator)}.</span></h1></div>
-      ${timerMarkup()}
-    </section>
-    <p class="draw-instruction">Décris l’image avec précision. Chaque détail compte&nbsp;!</p>
+    ${renderHeader({ badge: roundLabel() })}
+    ${timerMarkup()}
     ${renderIllustrationCard("draw-image-card")}
-    <div class="draw-footnote"><span class="blue-star">✳</span><span>Garde le téléphone pour toi, les autres dessinent à l’aveugle.</span></div>
-    <div class="bottom-action draw-bottom"><button class="primary-button finish-button" type="button" data-action="finish">Terminer la description ${icon("arrow", 19)}</button><p class="button-caption">Le chrono passe à la correction tout seul.</p></div>
+    <div class="bottom-action draw-bottom"><button class="primary-button finish-button" type="button" data-action="finish">Correction ${icon("arrow", 19)}</button></div>
   </main>`;
 }
 
 function renderIllustrationCard(className = "") {
   return `<figure class="illustration-card ${className}">
-    <div class="illustration-card-top"><span><i></i> MODÈLE À DÉCRIRE</span><button class="zoom-button" type="button" data-action="fullscreen" aria-label="Afficher l’illustration en plein écran">${icon("expand", 17)}<span>AGRANDIR</span></button></div>
+    <div class="illustration-card-top"><button class="zoom-button" type="button" data-action="fullscreen" aria-label="Afficher l’illustration en plein écran">${icon("expand", 17)}<span>Agrandir</span></button></div>
     <div class="illustration-image-wrap"><img src="${state.card.image}" alt="Illustration à décrire aux joueurs" /></div>
-    <figcaption><span>Garde l’œil ouvert</span><span class="image-caption-dots">···</span></figcaption>
   </figure>`;
 }
 
@@ -360,19 +286,15 @@ function renderCorrection() {
   state.timer = null;
   closeFullscreen();
   state.stage = "correction";
-  const nextName = nameAt((state.narratorIndex + 1) % state.players.length);
   const criteria = state.card.criteria.map((item, index) => `<li class="criterion-row"><span class="criterion-number">${String(index + 1).padStart(2, "0")}</span><span class="criterion-text">${escapeHtml(item)}</span><span class="criterion-point">+1<span>pt</span></span></li>`).join("");
   app.innerHTML = `<main class="screen game-screen correction-screen">
-    ${renderHeader({ back: true, badge: roundLabel() })}
-    <div class="stage-meter correction-meter"><span class="stage-meter-fill complete"></span><span class="stage-meter-label">CORRECTION · ${escapeHtml(nameAt(state.narratorIndex).toLocaleUpperCase("fr-FR"))}</span><span class="stage-index">02 <i>/</i> 02</span></div>
+    ${renderHeader({ badge: roundLabel() })}
     <section class="correction-content">
-      <div class="correction-title-row"><div><span class="eyebrow">LE MODÈLE</span><h1>On compare&nbsp;!</h1></div><span class="criteria-total">5 <small>détails</small></span></div>
       ${renderIllustrationCard("correction-image-card")}
-      <div class="criteria-heading"><div><h2>À vérifier ensemble</h2><p>Lis chaque critère à voix haute.</p></div><span class="criteria-heading-star">✳</span></div>
+      <div class="criteria-heading"><h1>À vérifier ensemble</h1></div>
       <ol class="criteria-list">${criteria}</ol>
-      <p class="score-note"><span>✦</span> Un point par détail retrouvé sur le dessin.</p>
     </section>
-    <div class="bottom-action correction-bottom"><button class="primary-button" type="button" data-action="next">Passer le téléphone à ${escapeHtml(nextName)} ${icon("arrow", 19)}</button><p class="button-caption">${escapeHtml(nextName)} sera le prochain narrateur.</p></div>
+    <div class="bottom-action correction-bottom"><button class="primary-button" type="button" data-action="next">Suivante ${icon("arrow", 19)}</button></div>
   </main>`;
 }
 
@@ -383,9 +305,9 @@ function openFullscreen() {
   modal.id = "image-modal";
   modal.setAttribute("role", "dialog");
   modal.setAttribute("aria-modal", "true");
-  modal.setAttribute("aria-label", "Illustration en plein écran");
+  modal.setAttribute("aria-label", "Illustration");
   const modalTimer = state.stage === "draw" ? `<span class="modal-timer" aria-label="${formatTime(state.secondsLeft)}">${formatTime(state.secondsLeft)}</span>` : "";
-  modal.innerHTML = `<div class="modal-toolbar"><span>${icon("sparkle", 17)} MODÈLE À DÉCRIRE</span><div class="modal-controls">${modalTimer}<button class="modal-close" type="button" data-action="close-fullscreen" aria-label="Fermer le plein écran">${icon("close", 22)}</button></div></div><img src="${state.card.image}" alt="Illustration à décrire" />`;
+  modal.innerHTML = `<div class="modal-toolbar"><span></span><div class="modal-controls">${modalTimer}<button class="modal-close" type="button" data-action="close-fullscreen" aria-label="Fermer">${icon("close", 22)}</button></div></div><img src="${state.card.image}" alt="Illustration" />`;
   document.body.append(modal);
   document.body.classList.add("modal-open");
   modal.querySelector("button").focus();
@@ -404,62 +326,25 @@ function startTimer() {
   state.timer = window.setInterval(() => {
     state.secondsLeft = Math.max(0, Math.ceil((state.timerEnd - Date.now()) / 1000));
     const readouts = document.querySelectorAll(".timer-readout, .modal-timer");
-    const ring = document.querySelector(".timer-ring");
     readouts.forEach((readout) => {
       readout.textContent = formatTime(state.secondsLeft);
       readout.setAttribute("aria-label", `${state.secondsLeft} secondes restantes`);
     });
-    if (ring) ring.style.setProperty("--timer-progress", String(state.secondsLeft / 90));
+    const progress = document.querySelector(".timer-progress");
+    if (progress) progress.style.width = `${(state.secondsLeft / 90) * 100}%`;
     if (state.secondsLeft <= 0) renderCorrection();
   }, 200);
 }
-
-function startGame() {
-  state.players = state.players.map((name, index) => name.trim() || `Joueur ${index + 1}`);
-  savePlayers();
-  state.roundNumber = 0;
-  state.deck = [];
-  state.deckPosition = 0;
-  prepareRound();
-}
-
-app.addEventListener("input", (event) => {
-  const input = event.target.closest("[data-player-index]");
-  if (!input) return;
-  state.players[Number(input.dataset.playerIndex)] = input.value;
-  const avatar = input.closest(".player-row")?.querySelector(".player-avatar");
-  if (avatar) avatar.textContent = initials(input.value || `Joueur ${Number(input.dataset.playerIndex) + 1}`);
-  const count = document.querySelector("#player-count");
-  if (count) count.innerHTML = `${state.players.length}<span> joueurs</span>`;
-  savePlayers();
-});
 
 app.addEventListener("click", (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
-  if (action === "add-player") {
-    if (state.players.length >= 12) return;
-    state.players.push("");
-    renderHome();
-    document.querySelector(`#player-${state.players.length - 1}`)?.focus();
-  } else if (action === "remove-player") {
-    if (state.players.length <= 2) return;
-    state.players.splice(Number(button.dataset.index), 1);
-    savePlayers();
-    renderHome();
-  } else if (action === "begin") startGame();
-  else if (action === "start-timer") startTimer();
+  if (action === "start-timer") startTimer();
   else if (action === "finish") renderCorrection();
   else if (action === "next") prepareRound();
   else if (action === "fullscreen") openFullscreen();
   else if (action === "close-fullscreen") closeFullscreen();
-  else if (action === "home") {
-    clearInterval(state.timer);
-    state.timer = null;
-    closeFullscreen();
-    renderHome();
-  }
 });
 
 document.addEventListener("keydown", (event) => {
@@ -474,4 +359,4 @@ document.addEventListener("visibilitychange", () => {
 
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 
-renderHome();
+prepareRound();
