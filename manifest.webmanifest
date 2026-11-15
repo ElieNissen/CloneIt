@@ -1,0 +1,16 @@
+{
+  "name": "Duplik — à vous de raconter",
+  "short_name": "Duplik",
+  "description": "Le compagnon de table des narrateurs Duplik.",
+  "lang": "fr-FR",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eaf2ff",
+  "theme_color": "#eaf2ff",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
